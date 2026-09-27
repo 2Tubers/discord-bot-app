@@ -128,7 +128,7 @@ No real secrets are committed to the repository.
 
 ### Admin Dashboard
 
-1. Go to https://discord-bot-app-five.vercel.app/login
+1. Go to https://discord-bot-app-five.vercel.app
 2. Email: `admin@test.com` / Password: `admin123456`
 3. Command Log tab shows all interactions
 4. Settings tab lets you toggle commands, mirroring, AI, and templates

@@ -34,3 +34,4 @@ The Ed25519 signature verification worked locally but failed on every Vercel dep
 - Unit tests for signature verification and command handling
 - Rate limiting on the dashboard API
 - Structured logging with correlation IDs per interaction
+- Provide a more strict typing with typescript instead of any
