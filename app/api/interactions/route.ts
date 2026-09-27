@@ -11,9 +11,6 @@ import {
   fetchGuildName,
 } from "@/lib/discord";
 
-// ─── Deduplication ────────────────────────────────────────────────────
-const processedInteractions = new Set<string>();
-
 // ─── POST Handler ─────────────────────────────────────────────────────
 export async function POST(request: NextRequest) {
   const rawBody = await request.text();
@@ -38,16 +35,26 @@ export async function POST(request: NextRequest) {
     await trackServer(interaction);
   }
 
+  // ── Deduplicate (database-backed) ───────────────────────────────
   const interactionId: string = interaction.id;
-  if (processedInteractions.has(interactionId)) {
+  const supabase = getSupabaseClient();
+  const { data: existing } = await supabase
+    .from("command_logs")
+    .select("response")
+    .eq("interaction_id", interactionId)
+    .single();
+
+  if (existing) {
     return NextResponse.json({
       type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-      data: { content: "Already processed." },
+      data: {
+        content: existing.response,
+        flags: 64,
+      },
     });
   }
-  processedInteractions.add(interactionId);
-  setTimeout(() => processedInteractions.delete(interactionId), 5 * 60 * 1000);
 
+  // ── Route by interaction type ───────────────────────────────────
   switch (interaction.type) {
     case InteractionType.APPLICATION_COMMAND:
       return handleSlashCommand(interaction);
@@ -69,14 +76,12 @@ async function trackServer(interaction: any) {
     const supabase = getSupabaseClient();
     const guildId = interaction.guild_id;
 
-    // Check if server already exists
     const { data: existing } = await supabase
       .from("servers")
       .select("guild_name")
       .eq("guild_id", guildId)
       .single();
 
-    // Only fetch from Discord API if new or name is unknown
     let guildName = existing?.guild_name;
     if (!guildName || guildName === "Unknown Server") {
       guildName = await fetchGuildName(guildId);
@@ -343,19 +348,19 @@ async function handleModalSubmit(interaction: any) {
               {
                 type: 2,
                 style: 3,
-                label: " Mark Resolved",
+                label: "✅ Mark Resolved",
                 custom_id: `resolve_report_${interaction.id}`,
               },
               {
                 type: 2,
                 style: 4,
-                label: " Escalate",
+                label: "🔺 Escalate",
                 custom_id: `escalate_report_${interaction.id}`,
               },
               {
                 type: 2,
                 style: 2,
-                label: " Assign to Me",
+                label: "📋 Assign to Me",
                 custom_id: `assign_report_${interaction.id}`,
               },
             ],
@@ -382,7 +387,7 @@ async function handleButton(interaction: any) {
     return NextResponse.json({
       type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
       data: {
-        content: " You are not authorized to perform this action.",
+        content: "⛔ You are not authorized to perform this action.",
         flags: 64,
       },
     });
@@ -401,7 +406,7 @@ async function handleButton(interaction: any) {
       data: {
         content:
           interaction.message.content +
-          `\n\n**Resolved** by ${user} at ${new Date().toISOString()}`,
+          `\n\n✅ **Resolved** by ${user} at ${new Date().toISOString()}`,
         components: [],
       },
     });
@@ -409,7 +414,7 @@ async function handleButton(interaction: any) {
 
   if (customId.startsWith("escalate_report_")) {
     if (config?.mirror_enabled) {
-      await safeMirror(` **Report Escalated** by ${user}`, guildId, interaction.id);
+      await safeMirror(`🔺 **Report Escalated** by ${user}`, guildId, interaction.id);
     }
     await logCommand(interaction, `Escalated report`, "escalated");
 
@@ -418,7 +423,7 @@ async function handleButton(interaction: any) {
       data: {
         content:
           interaction.message.content +
-          `\n\n **Escalated** by ${user} at ${new Date().toISOString()}`,
+          `\n\n🔺 **Escalated** by ${user} at ${new Date().toISOString()}`,
         components: [],
       },
     });
@@ -426,7 +431,7 @@ async function handleButton(interaction: any) {
 
   if (customId.startsWith("assign_report_")) {
     if (config?.mirror_enabled) {
-      await safeMirror(` **Report Assigned** to ${user}`, guildId, interaction.id);
+      await safeMirror(`📋 **Report Assigned** to ${user}`, guildId, interaction.id);
     }
     await logCommand(interaction, `Assigned report to ${user}`, "assigned");
 
@@ -435,7 +440,7 @@ async function handleButton(interaction: any) {
       data: {
         content:
           interaction.message.content +
-          `\n\n **Assigned** to ${user} at ${new Date().toISOString()}`,
+          `\n\n📋 **Assigned** to ${user} at ${new Date().toISOString()}`,
         components: [],
       },
     });
